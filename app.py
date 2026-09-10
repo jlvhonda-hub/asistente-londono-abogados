@@ -174,6 +174,11 @@ def _procesar_whatsapp(datos: dict):
                 continue  # actualización de estado (leído/entregado), la ignoramos
 
             for mensaje in mensajes_entrantes:
+                mensaje_id = mensaje.get("id")
+                if memoria.es_mensaje_duplicado(mensaje_id):
+                    log.info(f"WhatsApp: mensaje {mensaje_id} ya procesado (reintento de Meta), se ignora.")
+                    continue
+
                 remitente = mensaje.get("from")
                 tipo = mensaje.get("type")
 
@@ -347,6 +352,11 @@ def _procesar_messenger(datos: dict):
             remitente = evento_msg.get("sender", {}).get("id")
             mensaje = evento_msg.get("message", {})
             if not remitente:
+                continue
+
+            mensaje_id = mensaje.get("mid")
+            if memoria.es_mensaje_duplicado(mensaje_id):
+                log.info(f"Messenger: mensaje {mensaje_id} ya procesado (reintento de Meta), se ignora.")
                 continue
 
             adjuntos = mensaje.get("attachments")

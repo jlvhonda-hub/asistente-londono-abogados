@@ -12,6 +12,7 @@ de casos. El correo de notificación (notificaciones.py) es la copia confiable.
 import csv
 import os
 import threading
+from collections import deque
 from datetime import datetime
 
 _LOCK = threading.Lock()
@@ -20,6 +21,39 @@ _ESTADOS = {}  # {contacto_id: {"etapa":..., "area":..., "respuestas":{...}, ...
 MAX_TURNOS = 8  # cuántos mensajes recientes se recuerdan por contacto
 
 RUTA_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "contactos.csv")
+
+# ---------------------------------------------------------------------------
+# Control de mensajes duplicados
+# ---------------------------------------------------------------------------
+# Meta reintenta la entrega de un mensaje al webhook si no recibe respuesta a
+# tiempo (por ejemplo, mientras el servicio gratuito de Render está "despertando"
+# tras estar dormido). Sin este control, cada reintento dispara de nuevo todo el
+# flujo de conversación y el cliente recibe el mismo mensaje repetido varias veces.
+# Cada mensaje de WhatsApp/Messenger trae un identificador único; se recuerda un
+# número limitado de IDs recientes (no hace falta guardarlos para siempre) para
+# detectar y descartar los reintentos.
+_MENSAJES_PROCESADOS_MAX = 500
+_mensajes_procesados_set = set()
+_mensajes_procesados_orden = deque()
+
+
+def es_mensaje_duplicado(mensaje_id: str) -> bool:
+    """
+    Devuelve True si este mensaje_id ya se procesó antes (reintento de Meta) y
+    debe ignorarse. Si es la primera vez que se ve, lo registra y devuelve False.
+    Si mensaje_id viene vacío (no debería pasar), nunca se considera duplicado.
+    """
+    if not mensaje_id:
+        return False
+    with _LOCK:
+        if mensaje_id in _mensajes_procesados_set:
+            return True
+        _mensajes_procesados_set.add(mensaje_id)
+        _mensajes_procesados_orden.append(mensaje_id)
+        if len(_mensajes_procesados_orden) > _MENSAJES_PROCESADOS_MAX:
+            viejo = _mensajes_procesados_orden.popleft()
+            _mensajes_procesados_set.discard(viejo)
+        return False
 
 
 def es_contacto_nuevo(contacto_id: str) -> bool:

@@ -1,0 +1,43 @@
+# Configuración opcional para desplegar con un clic en Render usando "Blueprints".
+# También puede desplegar sin este archivo, creando el servicio manualmente
+# desde el panel de Render (ver README_DESPLIEGUE.md) — ambas formas funcionan igual.
+services:
+  - type: web
+    name: asistente-londono-abogados
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: NOMBRE_DESPACHO
+        value: "Javier Londoño V. Abogados & Asociados"
+      - key: HORARIO_ATENCION
+        value: "Lunes a viernes, 8:00 a.m. a 5:00 p.m."
+      - key: ESPECIALIDADES
+        value: "Derecho de Familia, Derecho Notarial, Derecho Civil (incluye procesos de pertenencia/prescripción) y gestión de Accidentes de Tránsito"
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: FACEBOOK_PAGE_TOKEN
+        sync: false
+      - key: IMAP_USER
+        sync: false
+      - key: IMAP_PASS
+        sync: false
+      - key: NOTIFICAR_A
+        sync: false
+      - key: PRECIO_CONSULTA
+        value: "$150.000 COP"
+      - key: WOMPI_LINK_CONSULTA
+        sync: false
+      # BASE_URL no se configura aquí: Render provee automáticamente
+      # RENDER_EXTERNAL_URL con la URL pública real del servicio, que app.py usa
+      # para armar los enlaces de descarga de los formularios PDF ampliados
+      # (carpeta formularios/, que debe subirse a GitHub junto con el resto del código).

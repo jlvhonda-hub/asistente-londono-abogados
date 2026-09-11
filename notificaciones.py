@@ -25,15 +25,24 @@ Configuración necesaria (variables de entorno en Render):
 """
 import base64
 import os
+import re
 
 import requests
 
 RESEND_API_URL = "https://api.resend.com/emails"
 
 
+def _limpiar(valor):
+    """Quita cualquier espacio en blanco o salto de línea (incluso en medio del
+    valor), por si se pegó mal al copiar la clave o el correo a mano."""
+    if not valor:
+        return valor
+    return re.sub(r"\s+", "", valor)
+
+
 def _destino_y_clave():
-    clave = os.getenv("RESEND_API_KEY")
-    destino = os.getenv("NOTIFICAR_A") or os.getenv("IMAP_USER")
+    clave = _limpiar(os.getenv("RESEND_API_KEY"))
+    destino = _limpiar(os.getenv("NOTIFICAR_A") or os.getenv("IMAP_USER"))
     return destino, clave
 
 

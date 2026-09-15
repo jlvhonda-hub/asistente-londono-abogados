@@ -94,6 +94,76 @@ FORMULARIOS = {
             },
         ],
     },
+    "custodia_visitas": {
+        "titulo": "Formulario ampliado — Custodia y Visitas",
+        "secciones": [
+            {
+                "titulo": "1. Identificación de la consulta y del cliente",
+                "campos": [
+                    {"id": "nombre_completo", "etiqueta": "Nombre completo", "tipo": "texto", "requerido": True},
+                    {"id": "documento_identidad", "etiqueta": "Documento de identidad", "tipo": "texto"},
+                    {"id": "correo", "etiqueta": "Correo electrónico", "tipo": "texto"},
+                    {"id": "ciudad_departamento", "etiqueta": "Ciudad y departamento", "tipo": "texto"},
+                    {"id": "direccion", "etiqueta": "Dirección de residencia", "tipo": "texto"},
+                    {"id": "parentesco_solicitante", "etiqueta": "¿Qué es usted del menor o los menores?", "tipo": "select",
+                     "opciones": ["Madre", "Padre", "Abuelo(a)", "Otro familiar", "Otro"]},
+                ],
+            },
+            {
+                "titulo": "2. Datos de la otra parte y de los menores",
+                "campos": [
+                    {"id": "nombre_otra_parte", "etiqueta": "Nombre completo de la otra parte (padre/madre)", "tipo": "texto"},
+                    {"id": "documento_otra_parte", "etiqueta": "Documento de la otra parte, si lo conoce", "tipo": "texto"},
+                    {"id": "ciudad_otra_parte", "etiqueta": "Ciudad de residencia de la otra parte", "tipo": "texto"},
+                    {"id": "menores_involucrados", "etiqueta": "Nombres y edades de los menores involucrados", "tipo": "area"},
+                    {"id": "con_quien_viven", "etiqueta": "¿Con quién viven actualmente los menores?", "tipo": "select",
+                     "opciones": ["Con la madre", "Con el padre", "Alternado entre ambos", "Con un tercero (abuelos u otro)", "Otro"]},
+                ],
+            },
+            {
+                "titulo": "3. Situación actual de custodia y visitas",
+                "campos": [
+                    {"id": "custodia_fijada", "etiqueta": "¿Existe custodia o visitas fijadas actualmente?", "tipo": "select",
+                     "opciones": ["Sí - por juez", "Sí - por comisaría / defensoría", "Sí - por conciliación",
+                                  "Acuerdo privado (de palabra o escrito)", "No", "No sabe"]},
+                    {"id": "fecha_acuerdo", "etiqueta": "Fecha aproximada del acuerdo o decisión", "tipo": "texto"},
+                    {"id": "regimen_visitas_actual", "etiqueta": "Describa el régimen de visitas actual (días, horarios, entregas)", "tipo": "area"},
+                    {"id": "incumplimientos", "etiqueta": "Describa incumplimientos, restricciones o dificultades para ver a los menores", "tipo": "area"},
+                ],
+            },
+            {
+                "titulo": "4. Motivo de la solicitud",
+                "campos": [
+                    {"id": "que_solicita", "etiqueta": "¿Qué está buscando?", "tipo": "checkboxes",
+                     "opciones": ["Fijar custodia", "Modificar custodia", "Fijar régimen de visitas",
+                                  "Modificar régimen de visitas", "Restablecer visitas suspendidas",
+                                  "Restricción de visitas por riesgo", "Otro"]},
+                    {"id": "razones_solicitud", "etiqueta": "Explique las razones de su solicitud", "tipo": "area"},
+                    {"id": "riesgo_menor", "etiqueta": "¿Hay alguna situación de riesgo para el menor que deba conocer el despacho? (maltrato, negligencia, consumo de sustancias, etc.)", "tipo": "area"},
+                ],
+            },
+            {
+                "titulo": "5. Actuaciones y pruebas",
+                "campos": [
+                    {"id": "actuaciones", "etiqueta": "Actuaciones realizadas", "tipo": "checkboxes",
+                     "opciones": ["Conciliación", "Comisaría de Familia", "Defensoría / ICBF", "Proceso judicial",
+                                  "Denuncia penal", "Medida de protección", "Ninguna"]},
+                    {"id": "radicados", "etiqueta": "Indique radicados, fechas, entidades o juzgados si existen", "tipo": "area"},
+                    {"id": "pruebas_disponibles", "etiqueta": "Pruebas disponibles", "tipo": "checkboxes",
+                     "opciones": ["Registro civil", "Certificados escolares", "Historia / órdenes médicas",
+                                  "Chats / mensajes", "Fotos / videos", "Testigos", "Decisiones previas", "Otros"]},
+                ],
+            },
+            {
+                "titulo": "Información complementaria",
+                "campos": [
+                    {"id": "relato_adicional", "etiqueta": "Relato adicional o información que considere importante", "tipo": "area"},
+                    {"id": "resultado_esperado", "etiqueta": "¿Qué resultado espera obtener o cuál es su principal objetivo?", "tipo": "area"},
+                    {"id": "urgencia", "etiqueta": "¿Existe alguna fecha, audiencia, vencimiento o situación urgente? Indique cuál.", "tipo": "area"},
+                ],
+            },
+        ],
+    },
 }
 
 

@@ -13,15 +13,21 @@ Endpoints:
 """
 import os
 import logging
+import urllib.parse
 
 import requests
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import asistente_ia
 import flujo
+import formularios_web
 import memoria
-from notificaciones import notificar_nuevo_mensaje, notificar_resumen_caso, notificar_archivo_recibido
+from notificaciones import (
+    notificar_nuevo_mensaje, notificar_resumen_caso, notificar_archivo_recibido,
+    notificar_formulario_web,
+)
 
 try:
     from dotenv import load_dotenv
@@ -88,6 +94,69 @@ async def recibir_webhook(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# FORMULARIOS WEB (se llenan directo en el navegador, sin descargar nada)
+# ---------------------------------------------------------------------------
+
+@app.get("/formulario/{slug}")
+def ver_formulario(slug: str, contacto: str = "", canal: str = ""):
+    html = formularios_web.generar_html_formulario(slug, contacto=contacto, canal=canal)
+    if not html:
+        return Response(content="Formulario no encontrado.", status_code=404)
+    return HTMLResponse(content=html)
+
+
+@app.post("/formulario/{slug}/enviar")
+async def enviar_formulario(slug: str, request: Request, contacto: str = "", canal: str = ""):
+    form_def = formularios_web.FORMULARIOS.get(slug)
+    if not form_def:
+        return Response(content="Formulario no encontrado.", status_code=404)
+
+    datos = await request.form()
+
+    # Arma {etiqueta bonita: valor} en el mismo orden del formulario, uniendo los
+    # checkboxes marcados (llegan como varias entradas con el mismo "name").
+    respuestas = {}
+    for seccion in form_def["secciones"]:
+        for campo in seccion["campos"]:
+            cid = campo["id"]
+            if campo["tipo"] == "checkboxes":
+                valores = datos.getlist(cid)
+                if valores:
+                    respuestas[campo["etiqueta"]] = ", ".join(valores)
+            else:
+                valor = datos.get(cid)
+                if valor:
+                    respuestas[campo["etiqueta"]] = valor
+
+    # Archivos adjuntados en el propio formulario.
+    archivos = []
+    tamano_total_mb = 0.0
+    for adjunto in datos.getlist("anexos"):
+        if not getattr(adjunto, "filename", ""):
+            continue
+        contenido = await adjunto.read()
+        if not contenido:
+            continue
+        tamano_total_mb += len(contenido) / (1024 * 1024)
+        if tamano_total_mb > TAMANO_MAXIMO_ADJUNTO_MB:
+            log.warning(f"Formulario web de {contacto}: se superó el tamaño máximo de adjuntos, se detiene ahí.")
+            break
+        archivos.append({"filename": adjunto.filename, "content_bytes": contenido})
+
+    contacto_real = urllib.parse.unquote(contacto) if contacto else "(no identificado)"
+    notificar_formulario_web(canal or "Formulario web", contacto_real, form_def["titulo"], respuestas, archivos)
+
+    if contacto:
+        try:
+            memoria.agregar_turno(contacto_real, "user", f"[completó el formulario web: {form_def['titulo']}]")
+        except Exception:
+            pass
+
+    html = formularios_web.generar_html_gracias(slug)
+    return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
 # LÓGICA COMÚN DE CONVERSACIÓN
 # ---------------------------------------------------------------------------
 
@@ -121,7 +190,7 @@ def _atender_contacto(canal: str, contacto_id: str, texto_usuario: str):
 
     if evento == "resumen_listo":
         area_nombre = asistente_ia.NOMBRES_AREA.get(nuevo_estado.get("area"), "Consulta")
-        formulario_enviado = flujo._area_pdf(nuevo_estado)
+        formulario_enviado = flujo._area_web(nuevo_estado) or flujo._area_pdf(nuevo_estado)
         notificar_resumen_caso(
             canal, contacto_id, area_nombre,
             nuevo_estado.get("respuestas", {}),
@@ -273,6 +342,8 @@ def _enviar_mensaje_whatsapp(destino: str, mensaje: dict):
         _enviar_whatsapp_botones(destino, mensaje["cuerpo"], mensaje["opciones"])
     elif tipo == "documento":
         _enviar_whatsapp_documento(destino, mensaje["archivo"], mensaje.get("titulo", ""), mensaje.get("descripcion", ""))
+    elif tipo == "formulario_web":
+        _enviar_whatsapp_formulario_web(destino, mensaje["slug"], mensaje.get("descripcion", ""), canal="WhatsApp")
 
 
 def _graph_post_whatsapp(body: dict):
@@ -327,6 +398,16 @@ def _enviar_whatsapp_documento(numero_destino: str, archivo: str, titulo: str, d
         "messaging_product": "whatsapp", "to": numero_destino, "type": "document",
         "document": {"link": link, "filename": archivo, "caption": titulo[:1024]},
     })
+
+
+def _enviar_whatsapp_formulario_web(numero_destino: str, slug: str, descripcion: str, canal: str):
+    if not BASE_URL:
+        log.warning("Falta BASE_URL/RENDER_EXTERNAL_URL: no se pudo armar el enlace del formulario web.")
+        _enviar_whatsapp_texto(numero_destino, f"{descripcion}\n\n(El abogado le hará llegar el formulario.)")
+        return
+    link = (f"{BASE_URL.rstrip('/')}/formulario/{slug}"
+            f"?contacto={urllib.parse.quote(numero_destino)}&canal={urllib.parse.quote(canal)}")
+    _enviar_whatsapp_texto(numero_destino, f"{descripcion}\n{link}")
 
 
 def _enviar_whatsapp_botones(numero_destino: str, cuerpo: str, opciones: list):
@@ -424,6 +505,8 @@ def _enviar_mensaje_messenger(psid: str, mensaje: dict):
         _enviar_messenger_texto(psid, texto)
     elif tipo == "documento":
         _enviar_messenger_documento(psid, mensaje["archivo"], mensaje.get("descripcion", ""))
+    elif tipo == "formulario_web":
+        _enviar_messenger_formulario_web(psid, mensaje["slug"], mensaje.get("descripcion", ""))
 
 
 def _enviar_messenger_documento(psid: str, archivo: str, descripcion: str):
@@ -449,6 +532,16 @@ def _enviar_messenger_documento(psid: str, archivo: str, descripcion: str):
             log.error(f"Error enviando documento por Messenger: {r.status_code} {r.text}")
     except Exception:
         log.exception("Excepción enviando documento por Messenger")
+
+
+def _enviar_messenger_formulario_web(psid: str, slug: str, descripcion: str):
+    if not BASE_URL:
+        log.warning("Falta BASE_URL/RENDER_EXTERNAL_URL: no se pudo armar el enlace del formulario web.")
+        _enviar_messenger_texto(psid, f"{descripcion}\n\n(El abogado le hará llegar el formulario.)")
+        return
+    link = (f"{BASE_URL.rstrip('/')}/formulario/{slug}"
+            f"?contacto={urllib.parse.quote(psid)}&canal=Messenger")
+    _enviar_messenger_texto(psid, f"{descripcion}\n{link}")
 
 
 def _enviar_messenger_texto(psid: str, texto: str):

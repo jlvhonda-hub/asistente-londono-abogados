@@ -153,3 +153,29 @@ def notificar_archivo_recibido(canal: str, remitente: str, nombre_archivo: str, 
 
     adjuntos = [{"filename": nombre_archivo, "content_bytes": contenido}]
     return _enviar_via_resend(asunto, cuerpo, adjuntos=adjuntos)
+
+
+def notificar_formulario_web(canal: str, contacto: str, titulo_formulario: str, respuestas: dict,
+                              archivos: list = None) -> bool:
+    """
+    Envía un correo con las respuestas de un formulario web (llenado directo en
+    el navegador, sin descargar PDF) y los archivos de soporte que el cliente
+    haya adjuntado ahí mismo.
+
+    respuestas: dict {etiqueta_del_campo: valor_como_texto} ya formateado y listo
+    para mostrar (ver app.py, que arma este dict a partir del formulario recibido).
+    archivos: lista de dicts {"filename":, "content_bytes":}, o None.
+    """
+    asunto = f"📝 Formulario web recibido ({titulo_formulario}) — {contacto}"
+
+    lineas = [f"Canal: {canal}", f"Contacto: {contacto}", ""]
+    lineas.append("Respuestas del formulario:")
+    for etiqueta, valor in respuestas.items():
+        if valor:
+            lineas.append(f"  - {etiqueta}: {valor}")
+    if archivos:
+        lineas.append("")
+        lineas.append(f"Se adjuntan {len(archivos)} archivo(s) que el cliente subió en el formulario.")
+    cuerpo = "\n".join(lineas)
+
+    return _enviar_via_resend(asunto, cuerpo, adjuntos=archivos)

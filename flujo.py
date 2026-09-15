@@ -44,7 +44,7 @@ FORMULARIO_ANEXOS = "anexos_documentos.pdf"
 # tema, se les envía también el formulario complementario "anexos_documentos.pdf"
 # para que puedan relacionar y aportar ordenadamente los documentos de soporte.
 AREAS_MENU = [
-    {"id": "area_alimentos", "titulo": "Alimentos", "pdf": "alimentos.pdf", "anexos": False,
+    {"id": "area_alimentos", "titulo": "Alimentos", "pdf": "alimentos.pdf", "web": "alimentos", "anexos": False,
      "claves": ["alimentos", "cuota alimentaria", "1"]},
     {"id": "area_custodia", "titulo": "Custodia y Visitas", "pdf": "custodia_visitas.pdf", "anexos": False,
      "claves": ["custodia", "visitas", "2"]},
@@ -182,18 +182,31 @@ def procesar(estado: dict, texto_usuario: str):
         estado["viabilidad"] = viabilidad
         mensajes.append({"tipo": "texto", "texto": viabilidad})
 
-        pdf = _area_pdf(estado)
-        if pdf:
+        web = _area_web(estado)
+        if web:
             mensajes.append({
-                "tipo": "documento",
-                "archivo": pdf,
+                "tipo": "formulario_web",
+                "slug": web,
                 "titulo": f"Formulario - {area_nombre}",
                 "descripcion": (
-                    "Le comparto el formulario ampliado para su caso. Complételo con calma "
-                    "(lo que no sepa o no aplique, escriba \"No aplica\" o \"No sé\") y devuélvalo por "
-                    "este mismo chat junto con los documentos que tenga disponibles."
+                    "Le comparto el formulario para su caso. Lo llena directo desde este enlace, "
+                    "sin necesidad de descargar ni imprimir nada, y puede adjuntar ahí mismo los "
+                    "documentos que tenga disponibles:"
                 ),
             })
+        else:
+            pdf = _area_pdf(estado)
+            if pdf:
+                mensajes.append({
+                    "tipo": "documento",
+                    "archivo": pdf,
+                    "titulo": f"Formulario - {area_nombre}",
+                    "descripcion": (
+                        "Le comparto el formulario ampliado para su caso. Complételo con calma "
+                        "(lo que no sepa o no aplique, escriba \"No aplica\" o \"No sé\") y devuélvalo por "
+                        "este mismo chat junto con los documentos que tenga disponibles."
+                    ),
+                })
 
         if _area_anexos(estado) and FORMULARIO_ANEXOS:
             mensajes.append({
@@ -260,6 +273,14 @@ def _area_pdf(estado):
     for op in AREAS_MENU:
         if op["id"] == area_id:
             return op.get("pdf")
+    return None
+
+
+def _area_web(estado):
+    area_id = estado.get("area")
+    for op in AREAS_MENU:
+        if op["id"] == area_id:
+            return op.get("web")
     return None
 
 

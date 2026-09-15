@@ -39,6 +39,8 @@ FORMULARIO_ANEXOS = "anexos_documentos.pdf"
 
 # Menú plano: cada tema específico es su propia opción, con su propio formulario PDF.
 # "pdf": None para la opción de "Otra consulta" (no tiene formulario ampliado).
+# "web": slug del formulario web (ver formularios_web.py) para los temas que ya
+# tienen su formulario en el navegador — si no está presente, se manda el PDF.
 # "anexos": True para los temas que suelen requerir más soportes/documentos (bienes
 # raíces, sucesiones, siniestros, trámites registrales): además del formulario del
 # tema, se les envía también el formulario complementario "anexos_documentos.pdf"
@@ -46,28 +48,28 @@ FORMULARIO_ANEXOS = "anexos_documentos.pdf"
 AREAS_MENU = [
     {"id": "area_alimentos", "titulo": "Alimentos", "pdf": "alimentos.pdf", "web": "alimentos", "anexos": False,
      "claves": ["alimentos", "cuota alimentaria", "1"]},
-    {"id": "area_custodia", "titulo": "Custodia y Visitas", "pdf": "custodia_visitas.pdf", "anexos": False,
+    {"id": "area_custodia", "titulo": "Custodia y Visitas", "pdf": "custodia_visitas.pdf", "web": "custodia_visitas", "anexos": False,
      "claves": ["custodia", "visitas", "2"]},
-    {"id": "area_divorcio", "titulo": "Divorcio", "pdf": "divorcio.pdf", "anexos": False,
+    {"id": "area_divorcio", "titulo": "Divorcio", "pdf": "divorcio.pdf", "web": "divorcio", "anexos": False,
      "claves": ["divorcio", "3"]},
-    {"id": "area_union_marital", "titulo": "Unión Marital de Hecho", "pdf": "union_marital.pdf", "anexos": False,
+    {"id": "area_union_marital", "titulo": "Unión Marital de Hecho", "pdf": "union_marital.pdf", "web": "union_marital", "anexos": False,
      "claves": ["union marital", "unión marital", "marital", "4"]},
-    {"id": "area_patria_potestad", "titulo": "Patria Potestad", "pdf": "patria_potestad.pdf", "anexos": False,
+    {"id": "area_patria_potestad", "titulo": "Patria Potestad", "pdf": "patria_potestad.pdf", "web": "patria_potestad", "anexos": False,
      "claves": ["patria potestad", "5"]},
-    {"id": "area_sucesion", "titulo": "Sucesión", "pdf": "sucesion.pdf", "anexos": True,
+    {"id": "area_sucesion", "titulo": "Sucesión", "pdf": "sucesion.pdf", "web": "sucesion", "anexos": True,
      "claves": ["sucesion", "sucesión", "herencia", "6"]},
     {"id": "area_tramite_notarial", "titulo": "Trámite Notarial / Registral (poderes, escrituras, etc.)",
-     "pdf": "tramite_notarial.pdf", "anexos": True,
+     "pdf": "tramite_notarial.pdf", "web": "tramite_notarial", "anexos": True,
      "claves": ["tramite", "trámite", "poder", "escritura", "registro", "7"]},
     {"id": "area_transito", "titulo": "Accidente de Tránsito / Reclamación a Aseguradora - SOAT",
-     "pdf": "reclamacion_aseguradora_transito.pdf", "anexos": True,
+     "pdf": "reclamacion_aseguradora_transito.pdf", "web": "reclamacion_aseguradora_transito", "anexos": True,
      "claves": ["transito", "tránsito", "accidente", "soat", "aseguradora", "8"]},
     {"id": "area_pertenencia", "titulo": "Pertenencia / Prescripción Adquisitiva", "pdf": "pertenencia.pdf",
-     "anexos": True, "claves": ["pertenencia", "prescripcion", "prescripción", "9"]},
+     "web": "pertenencia", "anexos": True, "claves": ["pertenencia", "prescripcion", "prescripción", "9"]},
     {"id": "area_divisorio", "titulo": "División de Bienes (Proindiviso)", "pdf": "divisorio_proindiviso.pdf",
-     "anexos": True, "claves": ["divisorio", "proindiviso", "division de bienes", "división de bienes", "10"]},
+     "web": "divisorio_proindiviso", "anexos": True, "claves": ["divisorio", "proindiviso", "division de bienes", "división de bienes", "10"]},
     {"id": "area_danos_obra", "titulo": "Daños por Obra Pública", "pdf": "danos_obra_publica.pdf",
-     "anexos": True, "claves": ["danos", "daños", "obra publica", "obra pública", "11"]},
+     "web": "danos_obra_publica", "anexos": True, "claves": ["danos", "daños", "obra publica", "obra pública", "11"]},
     {"id": "area_otro", "titulo": "Otra consulta", "pdf": None, "anexos": False,
      "claves": ["otro", "otra", "12"]},
 ]

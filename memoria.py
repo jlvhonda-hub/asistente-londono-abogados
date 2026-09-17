@@ -18,6 +18,7 @@ from datetime import datetime
 _LOCK = threading.Lock()
 _HISTORIALES = {}  # {contacto_id: [ {"role":..., "content":...}, ... ]}
 _ESTADOS = {}  # {contacto_id: {"etapa":..., "area":..., "respuestas":{...}, ...}}
+_CIERRES = {}  # {cierre_id: {"contrato":..., "poder":..., "requerimientos":..., ...}}
 MAX_TURNOS = 8  # cuántos mensajes recientes se recuerdan por contacto
 
 RUTA_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "contactos.csv")
@@ -79,6 +80,24 @@ def agregar_turno(contacto_id: str, rol: str, contenido: str):
         historial = _HISTORIALES.setdefault(contacto_id, [])
         historial.append({"role": rol, "content": contenido})
         _HISTORIALES[contacto_id] = historial[-MAX_TURNOS:]
+
+
+def guardar_cierre(cierre_id: str, datos: dict):
+    """
+    Guarda el paquete de documentos de cierre (contrato, poder, requerimientos,
+    ya aprobados por el abogado) para que el cliente los pueda ver en
+    /cierre/{cierre_id}. Igual que el resto de esta memoria, vive solo mientras
+    el servicio esté corriendo (no sobrevive un redespliegue ni el "sueño" por
+    inactividad); pensado para que el cliente abra el enlace poco después de
+    que el abogado se lo envía, no semanas después.
+    """
+    with _LOCK:
+        _CIERRES[cierre_id] = datos
+
+
+def obtener_cierre(cierre_id: str):
+    with _LOCK:
+        return _CIERRES.get(cierre_id)
 
 
 def registrar_contacto_csv(canal: str, contacto_id: str, texto: str):

@@ -2,17 +2,18 @@
 """
 flujo.py
 Motor de conversación por pasos:
-  saludo -> elegir directamente el tema específico del caso (un solo menú plano,
-  igual a como ya se tenía armado antes: cada tema es su propia opción, con su
-  propio formulario PDF ampliado — sin categorías intermedias)
-  -> triage corto (3 preguntas por chat) -> impresión de viabilidad con IA
-  -> se envía el formulario PDF ampliado correspondiente (para diligenciar con calma
-     y devolver por este mismo chat junto con los documentos de soporte)
+  saludo -> formulario web inicial (datos personales + elección del tema del
+  caso, todo en una sola pantalla en el navegador)
+  -> triage corto (preguntas por chat) -> impresión de viabilidad con IA
+  -> se envía el formulario web ampliado correspondiente al tema (se llena
+     directo en el navegador, sin descargar nada, e incluye su propio campo
+     para adjuntar documentos de soporte)
   -> oferta de consulta pagada -> enlace de pago Wompi
 
 Este módulo no sabe nada de WhatsApp ni de Facebook: solo recibe el estado de la
 conversación y el texto que escribió la persona, y devuelve una lista de mensajes
-"genéricos" (texto, lista, botones, documento) que app.py traduce a cada canal.
+"genéricos" (texto, lista, botones, documento, formulario_web) que app.py traduce
+a cada canal.
 
 Tipos de mensaje que puede devolver:
   {"tipo": "texto", "texto": "..."}
@@ -21,10 +22,14 @@ Tipos de mensaje que puede devolver:
   {"tipo": "documento", "archivo": "alimentos.pdf", "titulo": "...", "descripcion": "..."}
     -> app.py arma la URL pública real (BASE_URL + /formularios/<archivo>) y la envía
        como documento adjunto por WhatsApp/Messenger.
+  {"tipo": "formulario_web", "slug": "alimentos", "titulo": "...", "descripcion": "..."}
+    -> app.py arma la URL pública real (BASE_URL + /formulario/<slug>) y la envía
+       como enlace por WhatsApp/Messenger.
 
-Nota técnica: WhatsApp solo permite hasta 10 opciones en un menú interactivo tipo
-"lista", y aquí hay más de 10 temas — por eso el menú de temas se envía como texto
-numerado corriente (funciona igual en WhatsApp y en Messenger, y no tiene ese límite).
+Nota técnica: si la persona escribe en vez de usar el enlace del formulario
+inicial, el asistente sigue funcionando por chat de todas formas: se queda
+esperando el número o el nombre del tema (ver etapa "esperando_area"), igual
+que antes de tener el formulario web inicial.
 """
 import os
 import asistente_ia
@@ -33,18 +38,10 @@ NOMBRE_DESPACHO = os.getenv("NOMBRE_DESPACHO", "Javier Londoño V. Abogados & As
 PRECIO_CONSULTA = os.getenv("PRECIO_CONSULTA", "$150.000 COP")
 WOMPI_LINK_CONSULTA = os.getenv("WOMPI_LINK_CONSULTA", "")
 
-# Formulario complementario para casos con más volumen de información/documentos
-# de soporte (ver campo "anexos" en AREAS_MENU). Vive en la misma carpeta formularios/.
-FORMULARIO_ANEXOS = "anexos_documentos.pdf"
-
 # Menú plano: cada tema específico es su propia opción, con su propio formulario PDF.
 # "pdf": None para la opción de "Otra consulta" (no tiene formulario ampliado).
 # "web": slug del formulario web (ver formularios_web.py) para los temas que ya
 # tienen su formulario en el navegador — si no está presente, se manda el PDF.
-# "anexos": True para los temas que suelen requerir más soportes/documentos (bienes
-# raíces, sucesiones, siniestros, trámites registrales): además del formulario del
-# tema, se les envía también el formulario complementario "anexos_documentos.pdf"
-# para que puedan relacionar y aportar ordenadamente los documentos de soporte.
 AREAS_MENU = [
     {"id": "area_alimentos", "titulo": "Alimentos", "pdf": "alimentos.pdf", "web": "alimentos", "anexos": False,
      "claves": ["alimentos", "cuota alimentaria", "1"]},
@@ -92,7 +89,12 @@ CONSULTA_BOTONES = [
 
 SALUDO = (
     f"¡Hola! 👋 Gracias por escribir a *{NOMBRE_DESPACHO}*.\n\n"
-    "Soy el asistente virtual del despacho. Cuénteme, ¿cuál de estos temas se parece más a su caso?"
+    "Soy el asistente virtual del despacho."
+)
+
+DESCRIPCION_INICIO = (
+    "Para comenzar, complete este formulario breve con sus datos y el tema de su caso. "
+    "Se llena directo desde este enlace, sin necesidad de descargar ni imprimir nada:"
 )
 
 
@@ -141,7 +143,8 @@ def procesar(estado: dict, texto_usuario: str):
         etapa = "nuevo"
 
     if etapa == "nuevo":
-        mensajes.append({"tipo": "texto", "texto": SALUDO + "\n\n" + _texto_menu_areas()})
+        mensajes.append({"tipo": "texto", "texto": SALUDO})
+        mensajes.append({"tipo": "formulario_web", "slug": "inicio", "descripcion": DESCRIPCION_INICIO})
         estado["etapa"] = "esperando_area"
         return estado, mensajes, evento
 
@@ -209,19 +212,6 @@ def procesar(estado: dict, texto_usuario: str):
                         "este mismo chat junto con los documentos que tenga disponibles."
                     ),
                 })
-
-        if _area_anexos(estado) and FORMULARIO_ANEXOS:
-            mensajes.append({
-                "tipo": "documento",
-                "archivo": FORMULARIO_ANEXOS,
-                "titulo": "Formulario complementario - Anexos y documentos",
-                "descripcion": (
-                    "Este tipo de caso suele requerir varios documentos de soporte. Le comparto además "
-                    "este formulario complementario para relacionarlos ordenadamente (escrituras, "
-                    "certificados, recibos, fotos, etc.). Puede devolver ambos formularios y los "
-                    "documentos juntos, por este mismo chat, cuando los tenga listos."
-                ),
-            })
 
         mensajes.append({
             "tipo": "botones",

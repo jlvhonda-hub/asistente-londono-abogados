@@ -249,6 +249,10 @@ def _procesar_whatsapp(datos: dict):
                     continue
 
                 remitente = mensaje.get("from")
+                if not remitente:
+                    log.warning(f"WhatsApp: mensaje sin remitente identificado, se ignora. Datos completos: {mensaje}")
+                    continue
+
                 tipo = mensaje.get("type")
 
                 if tipo == "text":

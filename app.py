@@ -107,6 +107,12 @@ def ver_formulario(slug: str, contacto: str = "", canal: str = ""):
 
 @app.post("/formulario/{slug}/enviar")
 async def enviar_formulario(slug: str, request: Request, contacto: str = "", canal: str = ""):
+    if slug == "inicio":
+        # El formulario inicial (datos personales + elección del tema) no solo
+        # avisa al abogado: también debe continuar la conversación por
+        # WhatsApp/Messenger, así que se procesa aparte.
+        return await _enviar_formulario_inicio(request, contacto, canal)
+
     form_def = formularios_web.FORMULARIOS.get(slug)
     if not form_def:
         return Response(content="Formulario no encontrado.", status_code=404)
@@ -153,6 +159,92 @@ async def enviar_formulario(slug: str, request: Request, contacto: str = "", can
             pass
 
     html = formularios_web.generar_html_gracias(slug)
+    return HTMLResponse(content=html)
+
+
+async def _enviar_formulario_inicio(request: Request, contacto: str, canal: str):
+    """
+    Procesa el formulario inicial (datos personales + tema del caso, ver
+    formularios_web.FORMULARIOS["inicio"]). A diferencia de los formularios
+    por tema, este además debe avanzar el estado de la conversación y seguir
+    hablando con la persona por el mismo canal (WhatsApp o Messenger) en el
+    punto donde quedó — igual que si hubiera respondido esas preguntas por chat.
+    """
+    form_def = formularios_web.FORMULARIOS.get("inicio")
+    datos = await request.form()
+
+    nombre = (datos.get("nombre_completo") or "").strip()
+    documento = (datos.get("documento_identidad") or "").strip()
+    correo = (datos.get("correo") or "").strip()
+    ciudad = (datos.get("ciudad_departamento") or "").strip()
+    area_titulo = (datos.get("area") or "").strip()
+
+    archivos = []
+    tamano_total_mb = 0.0
+    for adjunto in datos.getlist("anexos"):
+        if not getattr(adjunto, "filename", ""):
+            continue
+        contenido = await adjunto.read()
+        if not contenido:
+            continue
+        tamano_total_mb += len(contenido) / (1024 * 1024)
+        if tamano_total_mb > TAMANO_MAXIMO_ADJUNTO_MB:
+            log.warning(f"Formulario inicial de {contacto}: se superó el tamaño máximo de adjuntos, se detiene ahí.")
+            break
+        archivos.append({"filename": adjunto.filename, "content_bytes": contenido})
+
+    contacto_real = urllib.parse.unquote(contacto) if contacto else ""
+
+    opcion = None
+    for op in flujo.AREAS_MENU:
+        if op["titulo"] == area_titulo:
+            opcion = op
+            break
+
+    if form_def:
+        respuestas_notif = {
+            "Nombre completo": nombre,
+            "Documento de identidad": documento,
+            "Correo electrónico": correo,
+            "Ciudad y departamento": ciudad,
+            "Tema seleccionado": area_titulo,
+        }
+        notificar_formulario_web(
+            canal or "Formulario web", contacto_real or "(no identificado)",
+            form_def["titulo"], respuestas_notif, archivos,
+        )
+
+    if contacto_real and opcion and nombre:
+        estado = memoria.obtener_estado(contacto_real)
+        estado["area"] = opcion["id"]
+        estado["respuestas"] = {
+            "nombre": nombre,
+            "documento_identidad": documento,
+            "correo": correo,
+            "ciudad_departamento": ciudad,
+        }
+        estado["indice"] = 1  # el "nombre" ya quedó respondido en este formulario
+        estado["etapa"] = "formulario"
+        memoria.guardar_estado(contacto_real, estado)
+        try:
+            memoria.agregar_turno(contacto_real, "user", f"[completó el formulario inicial: {nombre} — {opcion['titulo']}]")
+        except Exception:
+            pass
+
+        primer_nombre = nombre.split()[0] if nombre else ""
+        preguntas = flujo._preguntas_actuales(estado)
+        if estado["indice"] < len(preguntas):
+            siguiente = preguntas[estado["indice"]]["texto"]
+            mensaje_confirmacion = f"Gracias, {primer_nombre}. Ya tengo sus datos para *{opcion['titulo']}*.\n\n{siguiente}"
+        else:
+            mensaje_confirmacion = f"Gracias, {primer_nombre}."
+
+        if canal == "Messenger":
+            _enviar_messenger_texto(contacto_real, mensaje_confirmacion)
+        else:
+            _enviar_whatsapp_texto(contacto_real, mensaje_confirmacion)
+
+    html = formularios_web.generar_html_gracias("inicio")
     return HTMLResponse(content=html)
 
 
@@ -249,6 +341,14 @@ def _procesar_whatsapp(datos: dict):
                     continue
 
                 remitente = mensaje.get("from")
+                # CORRECCIÓN: a veces Meta manda un mensaje sin remitente
+                # identificado (por ejemplo pruebas del propio panel de Meta).
+                # Antes el programa seguía adelante igual e intentaba responder
+                # sin saber a quién, lo que producía el error "the parameter to
+                # is required" y el cliente real nunca recibía respuesta a su
+                # "hola". Ahora se registra el mensaje completo en el log (para
+                # poder revisar exactamente qué mandó Meta) y se detiene ahí,
+                # igual que ya se hacía en la parte de Facebook Messenger.
                 if not remitente:
                     log.warning(f"WhatsApp: mensaje sin remitente identificado, se ignora. Datos completos: {mensaje}")
                     continue

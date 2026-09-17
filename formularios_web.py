@@ -18,11 +18,40 @@ su slug, título y secciones/campos — no hace falta tocar nada más de este
 archivo, ni de app.py.
 """
 
+import flujo
+
 NOMBRE_DESPACHO = "Javier Londoño V. Abogados & Asociados"
 
 # Tipos de campo soportados: "texto", "area" (texto largo), "select",
 # "checkboxes" (multi-selección), "fecha".
 FORMULARIOS = {
+    # Formulario inicial: se envía justo después del saludo. En una sola
+    # pantalla se piden los datos personales y se elige el tema del caso (las
+    # opciones se toman directamente de flujo.AREAS_MENU, para no tener que
+    # mantener la lista duplicada en dos archivos). Al enviarse, app.py lo
+    # procesa de forma especial: además de avisarle al abogado, continúa la
+    # conversación por WhatsApp/Messenger con la siguiente pregunta.
+    "inicio": {
+        "titulo": "Datos iniciales de la consulta",
+        "secciones": [
+            {
+                "titulo": "Sus datos",
+                "campos": [
+                    {"id": "nombre_completo", "etiqueta": "Nombre completo", "tipo": "texto", "requerido": True},
+                    {"id": "documento_identidad", "etiqueta": "Documento de identidad", "tipo": "texto"},
+                    {"id": "correo", "etiqueta": "Correo electrónico", "tipo": "texto"},
+                    {"id": "ciudad_departamento", "etiqueta": "Ciudad y departamento", "tipo": "texto"},
+                ],
+            },
+            {
+                "titulo": "Motivo de la consulta",
+                "campos": [
+                    {"id": "area", "etiqueta": "¿Cuál de estos temas se parece más a su caso?", "tipo": "select",
+                     "requerido": True, "opciones": [op["titulo"] for op in flujo.AREAS_MENU]},
+                ],
+            },
+        ],
+    },
     "alimentos": {
         "titulo": "Formulario ampliado — Alimentos",
         "secciones": [

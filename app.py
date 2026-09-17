@@ -14,6 +14,7 @@ Endpoints:
 import os
 import logging
 import urllib.parse
+import uuid
 
 import requests
 from fastapi import FastAPI, Request, Response
@@ -24,9 +25,10 @@ import asistente_ia
 import flujo
 import formularios_web
 import memoria
+import panel_cierre
 from notificaciones import (
     notificar_nuevo_mensaje, notificar_resumen_caso, notificar_archivo_recibido,
-    notificar_formulario_web,
+    notificar_formulario_web, notificar_cierre_enviado,
 )
 
 try:
@@ -59,6 +61,10 @@ BASE_URL = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("BASE_URL", "")
 # (Gmail rechaza adjuntos más grandes de ~25 MB). Si el cliente envía algo más
 # pesado, se le avisa que no se pudo procesar automáticamente.
 TAMANO_MAXIMO_ADJUNTO_MB = float(os.getenv("TAMANO_MAXIMO_ADJUNTO_MB", "20"))
+# Clave del panel interno de "cierre de negocio" (paso 3, ver panel_cierre.py).
+# La define el abogado en Render; si no se configura, esa página queda
+# deshabilitada (para no dejarla abierta sin clave por descuido).
+PANEL_CIERRE_PASSWORD = os.getenv("PANEL_CIERRE_PASSWORD", "")
 
 
 @app.get("/")
@@ -246,6 +252,115 @@ async def _enviar_formulario_inicio(request: Request, contacto: str, canal: str)
 
     html = formularios_web.generar_html_gracias("inicio")
     return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
+# PANEL DE "CIERRE DE NEGOCIO" (paso 3, uso interno del abogado)
+# ---------------------------------------------------------------------------
+# Después de la consulta personal con el cliente, el abogado entra aquí,
+# escribe los datos del caso y aprueba (o corrige) los borradores que redacta
+# la IA antes de que se le envíen al cliente por WhatsApp/Messenger. Ver
+# panel_cierre.py para el detalle de cada pantalla.
+
+def _clave_panel_valida(clave: str) -> bool:
+    return bool(PANEL_CIERRE_PASSWORD) and clave == PANEL_CIERRE_PASSWORD
+
+
+@app.get("/panel/cierre")
+def ver_panel_cierre_login():
+    return HTMLResponse(content=panel_cierre.generar_html_login())
+
+
+@app.post("/panel/cierre")
+async def entrar_panel_cierre(request: Request):
+    datos = await request.form()
+    clave = datos.get("clave") or ""
+    if not _clave_panel_valida(clave):
+        return HTMLResponse(content=panel_cierre.generar_html_login(error=True))
+    return HTMLResponse(content=panel_cierre.generar_html_formulario_datos(clave))
+
+
+@app.post("/panel/cierre/generar")
+async def generar_documentos_cierre_ruta(request: Request):
+    datos_form = await request.form()
+    clave = datos_form.get("clave") or ""
+    if not _clave_panel_valida(clave):
+        return HTMLResponse(content=panel_cierre.generar_html_login(error=True))
+
+    datos = {
+        "canal": (datos_form.get("canal") or "").strip(),
+        "contacto": (datos_form.get("contacto") or "").strip(),
+        "nombre_cliente": (datos_form.get("nombre_cliente") or "").strip(),
+        "documento_identidad": (datos_form.get("documento_identidad") or "").strip(),
+        "ciudad": (datos_form.get("ciudad") or "").strip(),
+        "area": (datos_form.get("area") or "").strip(),
+        "resumen_caso": (datos_form.get("resumen_caso") or "").strip(),
+        "honorarios": (datos_form.get("honorarios") or "").strip(),
+        "notas": (datos_form.get("notas") or "").strip(),
+    }
+    try:
+        documentos = asistente_ia.generar_documentos_cierre(datos)
+    except Exception:
+        log.exception("Error generando documentos de cierre con IA")
+        return HTMLResponse(
+            content=panel_cierre.generar_html_error(
+                "No se pudieron generar los borradores (revise que la IA esté configurada). Intente de nuevo."
+            ),
+            status_code=500,
+        )
+
+    return HTMLResponse(content=panel_cierre.generar_html_revision(clave, datos, documentos))
+
+
+@app.post("/panel/cierre/enviar")
+async def enviar_documentos_cierre_ruta(request: Request):
+    datos_form = await request.form()
+    clave = datos_form.get("clave") or ""
+    if not _clave_panel_valida(clave):
+        return HTMLResponse(content=panel_cierre.generar_html_login(error=True))
+
+    datos = {
+        "canal": (datos_form.get("canal") or "").strip(),
+        "contacto": (datos_form.get("contacto") or "").strip(),
+        "nombre_cliente": (datos_form.get("nombre_cliente") or "").strip(),
+        "area": (datos_form.get("area") or "").strip(),
+        "contrato": (datos_form.get("contrato") or "").strip(),
+        "poder": (datos_form.get("poder") or "").strip(),
+        "requerimientos": (datos_form.get("requerimientos") or "").strip(),
+    }
+
+    cierre_id = uuid.uuid4().hex
+    memoria.guardar_cierre(cierre_id, datos)
+
+    if not BASE_URL:
+        log.warning("Falta BASE_URL/RENDER_EXTERNAL_URL: no se pudo armar el enlace de cierre.")
+        enlace = "(no se pudo generar el enlace: falta configurar BASE_URL)"
+    else:
+        enlace = f"{BASE_URL.rstrip('/')}/cierre/{cierre_id}"
+        primer_nombre = datos["nombre_cliente"].split()[0] if datos["nombre_cliente"] else ""
+        mensaje = (
+            f"¡Hola{', ' + primer_nombre if primer_nombre else ''}! Gracias por confiarnos su caso. "
+            f"Aquí puede ver el contrato, el poder y los documentos que necesitamos para continuar:\n{enlace}"
+        )
+        if datos["canal"] == "Messenger":
+            _enviar_messenger_texto(datos["contacto"], mensaje)
+        else:
+            _enviar_whatsapp_texto(datos["contacto"], mensaje)
+
+    notificar_cierre_enviado(
+        datos["canal"], datos["contacto"], datos["nombre_cliente"], datos["area"],
+        datos["contrato"], datos["poder"], datos["requerimientos"], enlace,
+    )
+
+    return HTMLResponse(content=panel_cierre.generar_html_confirmacion(datos, enlace))
+
+
+@app.get("/cierre/{cierre_id}")
+def ver_documentos_cierre(cierre_id: str):
+    datos = memoria.obtener_cierre(cierre_id)
+    if not datos:
+        return Response(content="Enlace no encontrado o vencido.", status_code=404)
+    return HTMLResponse(content=panel_cierre.generar_html_cliente(datos))
 
 
 # ---------------------------------------------------------------------------

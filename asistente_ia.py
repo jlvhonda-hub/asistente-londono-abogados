@@ -111,3 +111,102 @@ def responder(mensaje_usuario: str, historial=None) -> str:
         max_tokens=500,
     )
     return respuesta.choices[0].message.content.strip()
+
+
+# ---------------------------------------------------------------------------
+# CIERRE DE NEGOCIO (paso 3): redacción con IA de contrato, poder y
+# requerimientos, después de que el abogado tuvo la consulta personal con el
+# cliente y decide tomar el caso.
+# ---------------------------------------------------------------------------
+
+def _redactar_texto_legal(instruccion: str, max_tokens: int = 1200) -> str:
+    """
+    Llamada genérica a la IA para redactar un documento legal. Se usa un
+    "system prompt" distinto al de las conversaciones de WhatsApp: aquí se le
+    pide a la IA que redacte como un asistente jurídico que prepara borradores
+    para que el abogado los revise, no que converse con un cliente.
+    """
+    cliente = obtener_cliente()
+    system = (
+        f"Eres un asistente jurídico que ayuda a un abogado colombiano del despacho "
+        f"\"{NOMBRE_DESPACHO}\" a preparar BORRADORES de documentos legales, a partir de los "
+        "datos de un caso que el cliente ya aceptó en una consulta personal. Redacta en "
+        "español formal, estilo jurídico colombiano. Usa únicamente los datos que se te dan; "
+        "cuando falte un dato necesario para el documento, déjalo marcado claramente entre "
+        "corchetes (por ejemplo [VALOR DE LOS HONORARIOS], [CIUDAD]) en vez de inventarlo. "
+        "Recuerda siempre que es un BORRADOR: el abogado lo revisará, ajustará y firmará "
+        "antes de que tenga cualquier efecto. No agregues explicaciones fuera del documento "
+        "mismo (ni introducciones tipo \"Aquí tienes el documento\"): responde solo con el "
+        "texto del documento."
+    )
+    respuesta = cliente.chat.completions.create(
+        model=MODELO_POR_DEFECTO,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": instruccion},
+        ],
+        temperature=0.3,
+        max_tokens=max_tokens,
+    )
+    return respuesta.choices[0].message.content.strip()
+
+
+def _contexto_caso_cierre(datos: dict) -> str:
+    return (
+        f"Cliente: {datos.get('nombre_cliente') or 'No especificado'}\n"
+        f"Documento de identidad: {datos.get('documento_identidad') or 'No especificado'}\n"
+        f"Ciudad: {datos.get('ciudad') or 'No especificado'}\n"
+        f"Área / tipo de servicio: {datos.get('area') or 'No especificado'}\n"
+        f"Resumen de la consulta (hechos y lo hablado con el abogado): "
+        f"{datos.get('resumen_caso') or 'No especificado'}\n"
+        f"Honorarios y forma de pago acordados: {datos.get('honorarios') or 'No especificados aún'}\n"
+        f"Notas adicionales del abogado: {datos.get('notas') or 'Ninguna'}"
+    )
+
+
+def generar_documentos_cierre(datos: dict) -> dict:
+    """
+    datos: dict con nombre_cliente, documento_identidad, ciudad, area,
+    resumen_caso, honorarios, notas (los que falten pueden venir vacíos).
+
+    Devuelve {"contrato": str, "poder": str, "requerimientos": str}, tres
+    borradores generados con IA a partir de ese caso concreto (no son
+    plantillas fijas). El abogado debe revisarlos y ajustarlos antes de
+    enviarlos al cliente.
+    """
+    contexto = _contexto_caso_cierre(datos)
+    nombre = datos.get("nombre_cliente") or "el cliente"
+    area = datos.get("area") or "el asunto encomendado"
+
+    instruccion_contrato = (
+        "Redacta un BORRADOR de CONTRATO DE PRESTACIÓN DE SERVICIOS PROFESIONALES entre el "
+        f"despacho \"{NOMBRE_DESPACHO}\" (el abogado) y {nombre} (el cliente), para el caso "
+        "descrito abajo. Incluye: encabezado con las partes, objeto del contrato (según el "
+        "área y el resumen del caso), honorarios y forma de pago (o el espacio marcado si no "
+        "se dieron), obligaciones del abogado, obligaciones del cliente, confidencialidad, "
+        "duración o alcance del encargo, y un cierre para firma de ambas partes con fecha. "
+        f"Datos del caso:\n{contexto}"
+    )
+    instruccion_poder = (
+        "Redacta un BORRADOR de PODER ESPECIAL, en el formato usual en Colombia (conforme al "
+        f"Código General del Proceso), mediante el cual {nombre} le otorga poder al abogado "
+        f"del despacho \"{NOMBRE_DESPACHO}\" para la gestión judicial y/o extrajudicial del "
+        f"asunto de {area} descrito abajo. Incluye las facultades típicas necesarias para ese "
+        "tipo de trámite (representar, presentar y contestar solicitudes o demandas, conciliar, "
+        "recibir, según aplique), y el espacio para firma, presentación personal o autenticación. "
+        f"Datos del caso:\n{contexto}"
+    )
+    instruccion_requerimientos = (
+        "A partir de estos datos de un caso que el cliente ya aceptó en consulta, elabora una "
+        "lista breve y concreta (texto plano, apto para enviar por WhatsApp, sin encabezados "
+        "raros) de: primero, los documentos y soportes que el cliente debe aportar para "
+        "iniciar el trámite; segundo, cualquier información que quede pendiente por confirmar. "
+        f"Sé específico según el tipo de caso ({area}), no genérico. "
+        f"Datos del caso:\n{contexto}"
+    )
+
+    return {
+        "contrato": _redactar_texto_legal(instruccion_contrato, max_tokens=1400),
+        "poder": _redactar_texto_legal(instruccion_poder, max_tokens=1000),
+        "requerimientos": _redactar_texto_legal(instruccion_requerimientos, max_tokens=500),
+    }

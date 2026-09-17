@@ -179,3 +179,22 @@ def notificar_formulario_web(canal: str, contacto: str, titulo_formulario: str, 
     cuerpo = "\n".join(lineas)
 
     return _enviar_via_resend(asunto, cuerpo, adjuntos=archivos)
+
+
+def notificar_cierre_enviado(canal: str, contacto: str, nombre_cliente: str, area: str,
+                              contrato: str, poder: str, requerimientos: str, enlace: str) -> bool:
+    """
+    Copia de respaldo para el abogado de lo que se le acaba de enviar al
+    cliente en el paso de "cierre de negocio" (contrato, poder y
+    requerimientos ya aprobados y enviados por WhatsApp/Messenger).
+    """
+    asunto = f"✅ Cierre enviado a {nombre_cliente} ({area}) — {contacto}"
+    lineas = [
+        f"Canal: {canal}", f"Contacto: {contacto}", f"Cliente: {nombre_cliente}", f"Área: {area}",
+        f"Enlace que recibió el cliente: {enlace}", "",
+        "--- CONTRATO ENVIADO ---", contrato, "",
+        "--- PODER ENVIADO ---", poder, "",
+        "--- REQUERIMIENTOS Y SOPORTES ENVIADOS ---", requerimientos,
+    ]
+    cuerpo = "\n".join(lineas)
+    return _enviar_via_resend(asunto, cuerpo)

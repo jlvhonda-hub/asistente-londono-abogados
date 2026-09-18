@@ -176,49 +176,8 @@ def procesar(estado: dict, texto_usuario: str):
             return estado, mensajes, evento
 
         mensajes.append({"tipo": "texto", "texto": "Gracias. Estoy revisando la información…"})
-        area_nombre = asistente_ia.NOMBRES_AREA.get(estado["area"], "Consulta")
-        try:
-            viabilidad = asistente_ia.generar_viabilidad(estado["area"], estado["respuestas"])
-        except Exception:
-            viabilidad = (
-                "No pude generar el análisis automático en este momento, pero ya registré su caso "
-                "y el abogado lo revisará personalmente."
-            )
-        estado["viabilidad"] = viabilidad
-        mensajes.append({"tipo": "texto", "texto": viabilidad})
-
-        web = _area_web(estado)
-        if web:
-            mensajes.append({
-                "tipo": "formulario_web",
-                "slug": web,
-                "titulo": f"Formulario - {area_nombre}",
-                "descripcion": (
-                    "Le comparto el formulario para su caso. Lo llena directo desde este enlace, "
-                    "sin necesidad de descargar ni imprimir nada, y puede adjuntar ahí mismo los "
-                    "documentos que tenga disponibles:"
-                ),
-            })
-        else:
-            pdf = _area_pdf(estado)
-            if pdf:
-                mensajes.append({
-                    "tipo": "documento",
-                    "archivo": pdf,
-                    "titulo": f"Formulario - {area_nombre}",
-                    "descripcion": (
-                        "Le comparto el formulario ampliado para su caso. Complételo con calma "
-                        "(lo que no sepa o no aplique, escriba \"No aplica\" o \"No sé\") y devuélvalo por "
-                        "este mismo chat junto con los documentos que tenga disponibles."
-                    ),
-                })
-
-        mensajes.append({
-            "tipo": "botones",
-            "cuerpo": f"¿Desea agendar una *consulta con el abogado* para profundizar en su caso? Valor: {PRECIO_CONSULTA}",
-            "opciones": [{"id": o["id"], "titulo": o["titulo"]} for o in CONSULTA_BOTONES],
-        })
-        estado["etapa"] = "esperando_decision_consulta"
+        estado, mensajes_finalizacion = _finalizar_formulario(estado)
+        mensajes.extend(mensajes_finalizacion)
         return estado, mensajes, evento
 
     if etapa == "esperando_decision_consulta":
@@ -258,6 +217,66 @@ def procesar(estado: dict, texto_usuario: str):
         return estado, mensajes, evento
 
     return estado, mensajes, evento
+
+
+def _finalizar_formulario(estado: dict):
+    """
+    Arma los mensajes de cierre del triage: el análisis de viabilidad con IA,
+    el formulario ampliado (web o PDF) del área, y la oferta de consulta
+    pagada — y deja el estado en "esperando_decision_consulta".
+
+    Se usa tanto cuando las preguntas breves se respondieron por chat (ver
+    procesar(), etapa "formulario") como cuando el trámite viene directo del
+    formulario web inicial para un área que ya tiene su propio formulario
+    ampliado (ver app.py:_enviar_formulario_inicio) — en ese caso no hace
+    falta repetir por chat preguntas que el formulario ampliado ya cubre con
+    más detalle.
+    """
+    mensajes = []
+    area_nombre = asistente_ia.NOMBRES_AREA.get(estado["area"], "Consulta")
+    try:
+        viabilidad = asistente_ia.generar_viabilidad(estado["area"], estado["respuestas"])
+    except Exception:
+        viabilidad = (
+            "No pude generar el análisis automático en este momento, pero ya registré su caso "
+            "y el abogado lo revisará personalmente."
+        )
+    estado["viabilidad"] = viabilidad
+    mensajes.append({"tipo": "texto", "texto": viabilidad})
+
+    web = _area_web(estado)
+    if web:
+        mensajes.append({
+            "tipo": "formulario_web",
+            "slug": web,
+            "titulo": f"Formulario - {area_nombre}",
+            "descripcion": (
+                "Le comparto el formulario para su caso. Lo llena directo desde este enlace, "
+                "sin necesidad de descargar ni imprimir nada, y puede adjuntar ahí mismo los "
+                "documentos que tenga disponibles:"
+            ),
+        })
+    else:
+        pdf = _area_pdf(estado)
+        if pdf:
+            mensajes.append({
+                "tipo": "documento",
+                "archivo": pdf,
+                "titulo": f"Formulario - {area_nombre}",
+                "descripcion": (
+                    "Le comparto el formulario ampliado para su caso. Complételo con calma "
+                    "(lo que no sepa o no aplique, escriba \"No aplica\" o \"No sé\") y devuélvalo por "
+                    "este mismo chat junto con los documentos que tenga disponibles."
+                ),
+            })
+
+    mensajes.append({
+        "tipo": "botones",
+        "cuerpo": f"¿Desea agendar una *consulta con el abogado* para profundizar en su caso? Valor: {PRECIO_CONSULTA}",
+        "opciones": [{"id": o["id"], "titulo": o["titulo"]} for o in CONSULTA_BOTONES],
+    })
+    estado["etapa"] = "esperando_decision_consulta"
+    return estado, mensajes
 
 
 def _area_pdf(estado):

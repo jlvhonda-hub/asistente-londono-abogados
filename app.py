@@ -229,26 +229,41 @@ async def _enviar_formulario_inicio(request: Request, contacto: str, canal: str)
             "correo": correo,
             "ciudad_departamento": ciudad,
         }
-        estado["indice"] = 1  # el "nombre" ya quedó respondido en este formulario
-        estado["etapa"] = "formulario"
-        memoria.guardar_estado(contacto_real, estado)
         try:
             memoria.agregar_turno(contacto_real, "user", f"[completó el formulario inicial: {nombre} — {opcion['titulo']}]")
         except Exception:
             pass
 
         primer_nombre = nombre.split()[0] if nombre else ""
-        preguntas = flujo._preguntas_actuales(estado)
-        if estado["indice"] < len(preguntas):
-            siguiente = preguntas[estado["indice"]]["texto"]
-            mensaje_confirmacion = f"Gracias, {primer_nombre}. Ya tengo sus datos para *{opcion['titulo']}*.\n\n{siguiente}"
-        else:
-            mensaje_confirmacion = f"Gracias, {primer_nombre}."
+        saludo = {"tipo": "texto", "texto": f"Gracias, {primer_nombre}. Ya tengo sus datos para *{opcion['titulo']}*."}
 
-        if canal == "Messenger":
-            _enviar_messenger_texto(contacto_real, mensaje_confirmacion)
+        if flujo._area_web(estado):
+            # Esta área ya tiene su propio formulario ampliado (que vuelve a
+            # preguntar los hechos y la urgencia con más detalle), así que no
+            # tiene sentido repetir esas preguntas por chat: pasamos directo
+            # a mandarle el análisis de viabilidad y el formulario ampliado.
+            estado["indice"] = 0
+            estado, mensajes_finalizacion = flujo._finalizar_formulario(estado)
+            mensajes_salida = [saludo] + mensajes_finalizacion
         else:
-            _enviar_whatsapp_texto(contacto_real, mensaje_confirmacion)
+            estado["indice"] = 1  # el "nombre" ya quedó respondido en este formulario
+            estado["etapa"] = "formulario"
+            preguntas = flujo._preguntas_actuales(estado)
+            if estado["indice"] < len(preguntas):
+                saludo["texto"] += f"\n\n{preguntas[estado['indice']]['texto']}"
+            mensajes_salida = [saludo]
+
+        memoria.guardar_estado(contacto_real, estado)
+        for m in mensajes_salida:
+            if canal == "Messenger":
+                _enviar_mensaje_messenger(contacto_real, m)
+            else:
+                _enviar_mensaje_whatsapp(contacto_real, m)
+            if m["tipo"] == "texto":
+                try:
+                    memoria.agregar_turno(contacto_real, "assistant", m["texto"])
+                except Exception:
+                    pass
 
     html = formularios_web.generar_html_gracias("inicio")
     return HTMLResponse(content=html)
